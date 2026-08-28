@@ -15,7 +15,7 @@ import type { CapacitorConfig } from "@capacitor/cli";
  *
  * Point GREZZO_APP_URL at your deployment before running `npx cap sync`.
  */
-const liveUrl = process.env.GREZZO_APP_URL ?? "https://grezzo.vercel.app";
+const liveUrl = process.env.GREZZO_APP_URL ?? "https://grezzojeans.com";
 
 const config: CapacitorConfig = {
   appId: "store.grezzo.app",

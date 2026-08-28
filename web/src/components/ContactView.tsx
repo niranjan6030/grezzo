@@ -4,6 +4,7 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { Clock, Mail, MapPin, Phone } from "lucide-react";
 import Reveal from "./Reveal";
+import { SUPPORT_EMAIL } from "@/lib/site";
 
 const SECTIONS = [
   { id: "fit", title: "Size & fit",
@@ -37,7 +38,7 @@ export default function ContactView() {
         </Reveal>
         <div className="mt-14 grid gap-8 md:grid-cols-4">
           {[
-            { icon: Mail, label: "Email", value: "help@grezzo.store" },
+            { icon: Mail, label: "Email", value: SUPPORT_EMAIL },
             { icon: Phone, label: "Phone", value: "+91 80 4718 2200" },
             { icon: Clock, label: "Hours", value: "Mon–Sat, 10:00–19:00 IST" },
             { icon: MapPin, label: "Studio", value: "Indiranagar, Bengaluru 560038" },
@@ -64,7 +65,7 @@ export default function ContactView() {
               <p className="mt-3 text-sm leading-relaxed text-ink-soft">
                 The form is built but no mail service is connected yet, so this message
                 has not gone anywhere. Wire up Resend or Supabase Edge Functions
-                or write to help@grezzo.store in the meantime.
+                or write to {SUPPORT_EMAIL} in the meantime.
               </p>
             </motion.div>
           ) : (

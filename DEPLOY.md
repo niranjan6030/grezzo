@@ -86,7 +86,11 @@ a local emulator and every sign-in will fail.
    ```
    ADMIN_PASSWORD=<something long>
    ADMIN_SESSION_SECRET=<something long and different>
+   NEXT_PUBLIC_SITE_URL=https://grezzojeans.com
+   NEXT_PUBLIC_SUPPORT_EMAIL=help@grezzojeans.com
    ```
+   `NEXT_PUBLIC_SITE_URL` can wait until the domain is attached — Vercel
+   infers a sensible value from the project URL in the meantime.
 5. Deploy.
 
 The build succeeds with no variables at all, so a first deploy will never fail
@@ -94,31 +98,62 @@ on configuration — each feature simply reports itself as unconfigured. Check
 **/admin → Integrations** afterwards; it tests each service live rather than
 just checking a variable is present.
 
-## 4. A domain
+## 4. The domain — grezzojeans.com
 
-You already have a working URL — `your-project.vercel.app`, with HTTPS. That is
-a real address you can share today. Buy a domain when you want the name, not
-because the site needs one.
+Confirmed available: no WHOIS record, no DNS, RDAP returns 404.
 
-When you do:
+(`grezzo.com` is not obtainable — registered since 2004, paid through 2032,
+transfer-locked, and in use by Grezzo Co., Ltd., the Japanese game studio.
+`grezzo.co` is taken too, despite what one RDAP lookup claimed.)
 
-| Registrar | Why |
+### Buying it
+
+Any registrar sells `.com`. Expect ₹900–1,200/yr — **check the renewal price,
+not the first-year offer.**
+
+| Registrar | Notes |
 |---|---|
-| **Cloudflare Registrar** | Sells at wholesale cost with no renewal markup. Cheapest over years, and the difference compounds. |
-| **Namecheap** | Cheap first year, marked-up renewals. Read the renewal price, not the offer price. |
-| **GoDaddy** | Avoid. Aggressive upsells and expensive renewals. |
+| **Cloudflare Registrar** | At-cost, no renewal markup. Cheapest over years. Requires moving DNS to Cloudflare. |
+| **Namecheap** | Cheap year one, marked-up renewals. |
+| **GoDaddy** | Avoid — aggressive upsells, expensive renewals. |
 
-Rough Indian pricing: `.in` ₹500–800/yr, `.store` and `.shop` often ₹200–400
-for year one then ₹1,500–3,000 after, `.com` ₹900–1,200/yr and the most stable.
-**Check the renewal price before buying** — the cheap first year is the hook.
+Turn on WHOIS privacy (free at all three) or your name, address and phone
+become public in the WHOIS record.
 
-Avoid free `.tk` / `.ml` domains. They get reclaimed without warning, and
-losing the domain means losing every customer link to your store.
+### Pointing it at Vercel
 
-Then: **Vercel → Settings → Domains → Add**, and point the nameservers or add
-the `CNAME` where Vercel tells you. Certificates are automatic. Afterwards, add
-the domain to Firebase's authorised domains (step 2.5) or Google sign-in will
-break on the new address.
+1. **Vercel → your project → Settings → Domains → Add** `grezzojeans.com`.
+   Add `www.grezzojeans.com` too and let Vercel redirect one to the other.
+2. Vercel shows you either nameservers or DNS records. Either works:
+   - **Nameservers** — simplest, Vercel manages DNS.
+   - **A / CNAME records** — keep DNS where it is. `A` record on the apex
+     pointing at Vercel's IP, `CNAME` on `www` to `cname.vercel-dns.com`.
+3. Propagation is usually minutes, occasionally a few hours. HTTPS is
+   automatic once it resolves.
+
+### Then, three things people forget
+
+1. **Vercel env var** — set `NEXT_PUBLIC_SITE_URL=https://grezzojeans.com`.
+   Canonical links, Open Graph images, `sitemap.xml` and `robots.txt` all
+   build from it. Without it they point at the `.vercel.app` address.
+2. **Firebase → Authentication → Settings → Authorised domains** → add
+   `grezzojeans.com`. Miss this and Google sign-in fails on the new address
+   with an unhelpful error.
+3. **Razorpay → Settings → Webhooks** → point the webhook at
+   `https://grezzojeans.com/api/razorpay/webhook`.
+
+Optional but worth it: submit `https://grezzojeans.com/sitemap.xml` to
+[Google Search Console](https://search.google.com/search-console). The sitemap
+lists the home page, the listing, every product and the Denim Index, and
+excludes the bag, checkout and admin.
+
+### The one thing to check before printing labels
+
+Grezzo Co., Ltd. is an operating company using that name commercially — a
+different industry, so a clash is unlikely, but worth five minutes. Search the
+Indian trademark register at
+[ipindiaonline.gov.in/tmrpublicsearch](https://ipindiaonline.gov.in/tmrpublicsearch)
+under **class 25** (clothing) before the name goes on anything physical.
 
 ## 5. Razorpay — real payments
 
@@ -160,5 +195,5 @@ are in, so you cannot confuse the two by accident.
 3. Push to GitHub, import to Vercel, **root directory `web`**, paste variables
 4. Razorpay test keys → 2 variables. Checkout now works end to end.
 5. Start Razorpay KYC. Swap to live keys when it clears.
-6. Buy a domain whenever you want the name. Add it to Vercel *and* to
-   Firebase's authorised domains.
+6. Buy `grezzojeans.com`. Add it to Vercel, set `NEXT_PUBLIC_SITE_URL`, and
+   add it to Firebase's authorised domains and the Razorpay webhook.

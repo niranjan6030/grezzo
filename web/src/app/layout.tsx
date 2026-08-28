@@ -6,6 +6,7 @@ import { CatalogueProvider } from "@/components/CatalogueProvider";
 import ServiceWorker from "@/components/ServiceWorker";
 import { readAdminData } from "@/lib/admin/store";
 import { mergeCatalogue } from "@/lib/catalogue";
+import { SITE_URL } from "@/lib/site";
 
 const jost = Jost({
   variable: "--font-grezzo-sans",
@@ -15,6 +16,9 @@ const jost = Jost({
 });
 
 export const metadata: Metadata = {
+  // Without this, Open Graph and Twitter images resolve relative and break
+  // every time the site is linked anywhere.
+  metadataBase: new URL(SITE_URL),
   title: { default: "GREZZO — Jeans, only jeans", template: "%s · GREZZO" },
   description:
     "Menswear denim, and nothing else. Selvedge, stonewash and raw indigo, with the story of how each pair was made.",
