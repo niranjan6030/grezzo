@@ -4,6 +4,7 @@ import { readAdminData, updateAdminData } from "@/lib/admin/store";
 import { byId } from "@/lib/products";
 import { skuFor } from "@/lib/pricing";
 import { DEFAULT_DEPTH } from "@/lib/inventory";
+import { guarded } from "@/lib/admin/guard";
 
 /** Stock grid for one product: every colourway × size. */
 export async function GET(req: Request) {
@@ -34,7 +35,7 @@ export async function GET(req: Request) {
 
 /** Set an absolute count, or book in a delivery. Both write a movement note
  *  so the change is attributable later. */
-export async function POST(req: Request) {
+const _post = async (req: Request) => {
   const denied = await requireAdmin();
   if (denied) return denied;
 
@@ -60,3 +61,5 @@ export async function POST(req: Request) {
     stock: Object.fromEntries(updates.map((u) => [u.sku, data.stock[u.sku]])),
   });
 }
+
+export const POST = guarded(_post);

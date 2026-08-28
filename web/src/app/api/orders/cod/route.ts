@@ -11,6 +11,7 @@ import { getAdminSupabase } from "@/lib/supabase/server";
 import { requireUser } from "@/lib/firebase/admin";
 import { findAddress } from "@/lib/addresses";
 import type { CartLine } from "@/lib/types";
+import { guarded } from "@/lib/admin/guard";
 
 /**
  * Cash on delivery.
@@ -20,7 +21,7 @@ import type { CartLine } from "@/lib/types";
  * stock is committed straight away because the order is confirmed, just
  * unpaid.
  */
-export async function POST(req: Request) {
+const _post = async (req: Request) => {
   const auth = await requireUser();
   if ("response" in auth) {
     return auth.response;      // 401 signed out, or 503 if Firebase is unset
@@ -149,3 +150,5 @@ export async function POST(req: Request) {
     message: `Order ${receipt} confirmed. Pay ₹${(totals.totalPaise / 100).toLocaleString("en-IN")} to the courier on delivery.`,
   });
 }
+
+export const POST = guarded(_post);

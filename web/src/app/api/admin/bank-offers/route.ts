@@ -4,6 +4,7 @@ import { requireAdmin } from "@/lib/admin/auth";
 import { updateAdminData } from "@/lib/admin/store";
 import type { BankOffer } from "@/lib/admin/types";
 import type { PaymentMethod } from "@/lib/types";
+import { guarded } from "@/lib/admin/guard";
 
 const RAILS: PaymentMethod[] = ["card", "upi", "netbanking", "wallet", "paylater", "emi"];
 
@@ -51,7 +52,7 @@ function validate(body: Record<string, unknown>): { error: string } | { offer: D
   };
 }
 
-export async function POST(req: Request) {
+const _post = async (req: Request) => {
   const denied = await requireAdmin();
   if (denied) return denied;
 
@@ -68,7 +69,7 @@ export async function POST(req: Request) {
   return NextResponse.json({ ok: true });
 }
 
-export async function PATCH(req: Request) {
+const _patch = async (req: Request) => {
   const denied = await requireAdmin();
   if (denied) return denied;
 
@@ -98,7 +99,7 @@ export async function PATCH(req: Request) {
   return NextResponse.json({ ok: true });
 }
 
-export async function DELETE(req: Request) {
+const _delete = async (req: Request) => {
   const denied = await requireAdmin();
   if (denied) return denied;
   const { id } = await req.json().catch(() => ({}));
@@ -107,3 +108,7 @@ export async function DELETE(req: Request) {
   });
   return NextResponse.json({ ok: true });
 }
+
+export const POST = guarded(_post);
+export const PATCH = guarded(_patch);
+export const DELETE = guarded(_delete);

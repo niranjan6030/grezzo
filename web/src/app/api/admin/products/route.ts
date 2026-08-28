@@ -4,6 +4,7 @@ import { updateAdminData } from "@/lib/admin/store";
 import type { ProductOverride } from "@/lib/admin/types";
 import { byId } from "@/lib/products";
 import type { Colourway, Fit, Rise } from "@/lib/types";
+import { guarded } from "@/lib/admin/guard";
 
 const FITS: Fit[] = ["Skinny", "Slim", "Tapered", "Straight", "Regular",
                      "Bootcut", "Relaxed", "Wide Leg", "Baggy"];
@@ -13,7 +14,7 @@ const MAX_PHOTO_CHARS = 700_000;   // ~500KB of base64; the client downscales fi
 
 /** Save an override for one product. Fields left out are left alone, so the
  *  console can send just what changed. */
-export async function PATCH(req: Request) {
+const _patch = async (req: Request) => {
   const denied = await requireAdmin();
   if (denied) return denied;
 
@@ -114,10 +115,13 @@ export async function PATCH(req: Request) {
 }
 
 /** Drop every override for a product and fall back to the built-in values. */
-export async function DELETE(req: Request) {
+const _delete = async (req: Request) => {
   const denied = await requireAdmin();
   if (denied) return denied;
   const { productId } = await req.json().catch(() => ({}));
   await updateAdminData((draft) => { delete draft.products[productId]; });
   return NextResponse.json({ ok: true });
 }
+
+export const PATCH = guarded(_patch);
+export const DELETE = guarded(_delete);

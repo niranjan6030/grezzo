@@ -4,6 +4,7 @@ import {
   createAddress, deleteAddress, loadAddresses, setDefaultAddress, updateAddress,
 } from "@/lib/addresses";
 import type { Address } from "@/lib/types";
+import { guarded } from "@/lib/admin/guard";
 
 /* Saved addresses, kept against the Firebase uid so they follow a shopper
    from phone to laptop rather than living in one browser. */
@@ -53,7 +54,7 @@ export async function GET() {
   );
 }
 
-export async function POST(req: Request) {
+const _post = async (req: Request) => {
   const auth = await requireUser();
   if ("response" in auth) return auth.response;
 
@@ -65,7 +66,7 @@ export async function POST(req: Request) {
   return NextResponse.json({ addresses });
 }
 
-export async function PATCH(req: Request) {
+const _patch = async (req: Request) => {
   const auth = await requireUser();
   if ("response" in auth) return auth.response;
 
@@ -85,10 +86,14 @@ export async function PATCH(req: Request) {
   return NextResponse.json({ addresses });
 }
 
-export async function DELETE(req: Request) {
+const _delete = async (req: Request) => {
   const auth = await requireUser();
   if ("response" in auth) return auth.response;
 
   const { id } = await req.json().catch(() => ({}));
   return NextResponse.json({ addresses: await deleteAddress(auth.user.uid, id) });
 }
+
+export const POST = guarded(_post);
+export const PATCH = guarded(_patch);
+export const DELETE = guarded(_delete);

@@ -37,9 +37,28 @@ async function readFile(): Promise<AdminData> {
   }
 }
 
+/** Thrown when the file backend cannot write, which on a serverless host is
+ *  every time. Carries an explanation rather than a raw errno. */
+export class StorageUnavailableError extends Error {}
+
 async function writeFile(data: AdminData): Promise<void> {
-  await fs.mkdir(path.dirname(FILE), { recursive: true });
-  await fs.writeFile(FILE, JSON.stringify(data, null, 2), "utf8");
+  try {
+    await fs.mkdir(path.dirname(FILE), { recursive: true });
+    await fs.writeFile(FILE, JSON.stringify(data, null, 2), "utf8");
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException)?.code;
+    // Serverless filesystems are read-only apart from /tmp, and /tmp is wiped
+    // between invocations — so writing there would look like it worked and
+    // then silently lose the data, which is worse than failing.
+    if (code === "EROFS" || code === "EACCES" || code === "EPERM") {
+      throw new StorageUnavailableError(
+        "This deployment has no database, and its filesystem is read-only. " +
+        "Connect Supabase (SUPABASE_SERVICE_ROLE_KEY and NEXT_PUBLIC_SUPABASE_URL) " +
+        "to save changes — see DEPLOY.md step 1.",
+      );
+    }
+    throw e;
+  }
 }
 
 export async function readAdminData(): Promise<AdminData> {

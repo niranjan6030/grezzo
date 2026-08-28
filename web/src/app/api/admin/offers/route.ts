@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { requireAdmin } from "@/lib/admin/auth";
 import { updateAdminData } from "@/lib/admin/store";
 import type { Offer, OfferScope } from "@/lib/admin/types";
+import { guarded } from "@/lib/admin/guard";
 
 function parseScope(raw: unknown): OfferScope | null {
   const s = raw as { type?: string; value?: string };
@@ -45,7 +46,7 @@ function validate(body: Record<string, unknown>): { error: string } | { offer: O
   };
 }
 
-export async function POST(req: Request) {
+const _post = async (req: Request) => {
   const denied = await requireAdmin();
   if (denied) return denied;
 
@@ -62,7 +63,7 @@ export async function POST(req: Request) {
   return NextResponse.json({ ok: true, offer });
 }
 
-export async function PATCH(req: Request) {
+const _patch = async (req: Request) => {
   const denied = await requireAdmin();
   if (denied) return denied;
 
@@ -93,7 +94,7 @@ export async function PATCH(req: Request) {
   return NextResponse.json({ ok: true });
 }
 
-export async function DELETE(req: Request) {
+const _delete = async (req: Request) => {
   const denied = await requireAdmin();
   if (denied) return denied;
   const { id } = await req.json().catch(() => ({}));
@@ -102,3 +103,7 @@ export async function DELETE(req: Request) {
   });
   return NextResponse.json({ ok: true });
 }
+
+export const POST = guarded(_post);
+export const PATCH = guarded(_patch);
+export const DELETE = guarded(_delete);
