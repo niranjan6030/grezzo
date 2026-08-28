@@ -1,0 +1,325 @@
+@import "tailwindcss";
+
+/* ============================================================
+   GREZZO — denim design system
+   Palette derived from real indigo dyeing: raw > rinse > stone
+   > bleach. Blue and white only, with a single gold thread accent
+   borrowed from jean topstitching.
+   ============================================================ */
+:root {
+  /* Indigo, desaturated the way real cloth is. Saturated blues read as
+     plastic on screen; every value here is pulled toward grey. */
+  --denim-raw:    #0d1420;  /* near-black indigo, for full-bleed panels */
+  --denim-deep:   #16233a;  /* one-dip indigo */
+  --denim-mid:    #33486a;  /* muted jean blue */
+  --denim-light:  #8496b0;  /* stonewash, greyed */
+  --denim-wash:   #eceef1;  /* cool paper, for product grounds */
+  --denim-paper:  #fbfaf8;  /* warm off-white — pure white looks clinical */
+  --thread:       #97835f;  /* topstitch, muted brass not gold */
+  --ink:          #10161f;
+  --ink-soft:     #6b7280;
+  --line:         #e3e2df;
+
+  --background: var(--denim-paper);
+  --foreground: var(--ink);
+
+  /* Zara-ish motion: slow, heavy, confident. Nothing bounces. */
+  --ease-drape: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-cut:   cubic-bezier(0.77, 0, 0.175, 1);
+  --dur-slow:   1100ms;
+  --dur-mid:    620ms;
+  --dur-fast:   320ms;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-denim-raw: var(--denim-raw);
+  --color-denim-deep: var(--denim-deep);
+  --color-denim-mid: var(--denim-mid);
+  --color-denim-light: var(--denim-light);
+  --color-denim-wash: var(--denim-wash);
+  --color-thread: var(--thread);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-line: var(--line);
+  --font-sans: var(--font-grezzo-sans);
+}
+
+* { -webkit-tap-highlight-color: transparent; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-grezzo-sans), "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-weight: 300;
+  letter-spacing: 0.015em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+/* Zara's signature: tiny, wide-tracked, uppercase labels everywhere. */
+.tracked {
+  text-transform: uppercase;
+  letter-spacing: 0.19em;
+  font-size: 0.665rem;
+  font-weight: 400;
+}
+.tracked-lg {
+  text-transform: uppercase;
+  letter-spacing: 0.3em;
+  font-weight: 200;
+}
+
+/* Form fields.
+
+   The wide uppercase tracking is right for a *label* and wrong for a value:
+   typing "nira@gmail.com" and watching it render as "NIRA@GMAIL.COM" makes
+   people think the field is mangling their input. So the placeholder keeps
+   the house style and the value is shown exactly as typed. */
+.field {
+  text-transform: none;
+  letter-spacing: 0.015em;
+  font-size: 0.9rem;
+}
+.field::placeholder {
+  text-transform: uppercase;
+  letter-spacing: 0.19em;
+  font-size: 0.665rem;
+  color: var(--ink-soft);
+}
+
+/* Layered for the same reason as the denim rules below: an unlayered
+   `position: relative` here outranks Tailwind's `absolute`, which silently
+   collapsed the vertical seams to zero height. Anything of mine that sets
+   `position` has to live in a layer. */
+@layer components {
+  /* Underline that draws itself from the left, like a needle running a seam. */
+  .seam-link {
+    position: relative;
+    display: inline-block;
+  }
+  .seam-link::after {
+    content: "";
+    position: absolute;
+    left: 0; bottom: -3px;
+    width: 100%; height: 1px;
+    background: currentColor;
+    transform: scaleX(0);
+    transform-origin: right;
+    transition: transform var(--dur-mid) var(--ease-drape);
+  }
+  .seam-link:hover::after { transform: scaleX(1); transform-origin: left; }
+
+  /* ------------------------------------------------------------------
+     Topstitching.
+
+     Two parallel rows, not one. Double topstitching is what a jean uses on
+     any seam that has to survive — outseam, yoke, waistband — and a single
+     row reads as decoration where a double row reads as construction.
+
+     The dashes on the second row are offset by half a stitch, because a
+     real second pass never lands in the same holes as the first.
+     ------------------------------------------------------------------ */
+  .topstitch {
+    position: relative;
+    height: 5px;
+  }
+  .topstitch::before,
+  .topstitch::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: repeating-linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--thread) 70%, transparent) 0 6px,
+      transparent 6px 11px
+    );
+  }
+  .topstitch::before { top: 0; }
+  .topstitch::after  { bottom: 0; background-position-x: 5.5px; }
+
+  /* The same seam, running vertically. */
+  .topstitch-y {
+    position: relative;
+    width: 5px;
+  }
+  .topstitch-y::before,
+  .topstitch-y::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: repeating-linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--thread) 70%, transparent) 0 6px,
+      transparent 6px 11px
+    );
+  }
+  .topstitch-y::before { left: 0; }
+  .topstitch-y::after  { right: 0; background-position-y: 5.5px; }
+
+  /* On dark denim the thread has to lift off the cloth to be seen at all. */
+  .denim-weave .topstitch::before,
+  .denim-weave .topstitch::after,
+  .denim-weave .topstitch-y::before,
+  .denim-weave .topstitch-y::after {
+    background-image: repeating-linear-gradient(
+      var(--stitch-angle, 90deg),
+      color-mix(in srgb, var(--thread) 95%, white 20%) 0 6px,
+      transparent 6px 11px
+    );
+    opacity: 0.85;
+  }
+  .denim-weave .topstitch-y::before,
+  .denim-weave .topstitch-y::after { --stitch-angle: 180deg; }
+}
+
+/* ------------------------------------------------------------------
+   Denim, built the way the cloth is.
+
+   The premium trick is frequency, not contrast: many fine threads at low
+   alpha read as expensive fabric, while a few strong lines read as a
+   pattern swatch. Four layers, in paint order:
+
+     1. slub — fractal noise, the irregularity of real spun cotton
+     2. warp — fine vertical threads
+     3. twill — the 3x1 diagonal, at the 63° a real twill sits at
+     4. light — a soft sheen from above and a vignette at the edges
+
+   Every value here is deliberately about a third of what looks right
+   when you are zoomed in at 400%.
+   ------------------------------------------------------------------ */
+:root {
+  /* Fine-grain slub. Higher baseFrequency = finer thread = more expensive. */
+  --slub: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='s'><feTurbulence type='fractalNoise' baseFrequency='0.78' numOctaves='4' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='220' height='220' filter='url(%23s)'/></svg>");
+  /* Coarser cloud, breaks up any sense of a repeating tile. */
+  --cloud: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='480' height='480'><filter id='c'><feTurbulence type='fractalNoise' baseFrequency='0.012' numOctaves='3' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='480' height='480' filter='url(%23c)'/></svg>");
+}
+
+/* In @layer components on purpose. Unlayered CSS outranks every Tailwind
+   utility regardless of specificity, so an unlayered `position: relative`
+   here silently beat `absolute` on any element using both — which collapsed
+   the hero and the zip panels to zero height. Inside a layer, the utility
+   wins, as it should. */
+@layer components {
+  .denim-weave {
+    position: relative;
+    isolation: isolate;
+    background-color: var(--denim-deep);
+    background-image:
+      /* sheen from above, and a little warmth low down so it is not flat */
+      radial-gradient(120% 80% at 50% -12%, rgba(173,192,219,0.16), transparent 58%),
+      radial-gradient(90% 60% at 50% 112%, rgba(9,15,26,0.45), transparent 60%),
+      /* warp: fine vertical threads */
+      repeating-linear-gradient(90deg,
+        rgba(226,234,247,0.020) 0 1px,
+        transparent 1px 2px,
+        rgba(4,9,18,0.030) 2px 3px,
+        transparent 3px 4px),
+      /* the twill itself */
+      repeating-linear-gradient(63deg,
+        rgba(226,234,247,0.048) 0 0.75px,
+        transparent 0.75px 1.75px,
+        rgba(3,8,16,0.065) 1.75px 2.5px,
+        transparent 2.5px 3.6px);
+  }
+
+  /* Slub and cloud ride above the weave so they break up the regularity
+     rather than sitting under it. */
+  .denim-weave::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    background-image: var(--slub), var(--cloud);
+    background-size: 220px 220px, 480px 480px;
+    mix-blend-mode: soft-light;
+    opacity: 0.5;
+    pointer-events: none;
+  }
+
+  /* Vignette: the edges of a bolt of cloth are never as lit as the middle. */
+  .denim-weave::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    background: radial-gradient(115% 90% at 50% 45%, transparent 55%, rgba(6,11,20,0.42));
+    pointer-events: none;
+  }
+
+  /* ------------------------------------------------------------------
+     The pale ground products sit on. Not white — a woven cotton surface,
+     lit from above, so the garment has something to sit on rather than
+     floating in a void.
+     ------------------------------------------------------------------ */
+  .denim-weave-light {
+    position: relative;
+    isolation: isolate;
+    background-color: var(--denim-wash);
+    background-image:
+      radial-gradient(78% 62% at 50% 28%, rgba(255,255,255,0.95), transparent 72%),
+      /* Half the period and a fifth of the contrast of the dark weave. At this
+         frequency the diagonal stops resolving as stripes and reads as cloth,
+         which is the whole difference between expensive and printed. */
+      repeating-linear-gradient(63deg,
+        rgba(255,255,255,0.34) 0 0.5px,
+        transparent 0.5px 1.25px,
+        rgba(16,22,31,0.014) 1.25px 1.75px,
+        transparent 1.75px 2.6px);
+  }
+
+  .denim-weave-light::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    background-image: var(--slub);
+    background-size: 200px 200px;
+    mix-blend-mode: multiply;
+    opacity: 0.04;
+    pointer-events: none;
+  }
+
+  /* Content sits above the texture layers. */
+  .denim-weave > *,
+  .denim-weave-light > * { position: relative; z-index: 1; }
+}
+
+/* Scrollbar, kept quiet */
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #cfcdc9; border: 3px solid var(--denim-paper); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: var(--denim-light); }
+
+::selection { background: var(--denim-deep); color: #fbfaf8; }
+
+/* Marquee for the live denim-facts ribbon */
+@keyframes marquee {
+  from { transform: translate3d(0,0,0); }
+  to   { transform: translate3d(-50%,0,0); }
+}
+.marquee-track {
+  display: flex;
+  width: max-content;
+  animation: marquee 64s linear infinite;
+}
+.marquee-host:hover .marquee-track { animation-play-state: paused; }
+
+/* Respect people who don't want motion — the whole site is motion, so this
+   matters more here than usual. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

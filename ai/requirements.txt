@@ -1,0 +1,11 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+numpy==2.2.1
+pillow==11.1.0
+# Torch powers both halves: the LSTM recommender and CLIP for the lens.
+# CPU wheels are enough — and are what the free tiers give you.
+torch==2.5.1
+open-clip-torch==2.30.0
+# Only needed by train_recommender.py when pulling real sessions.
+supabase==2.11.0
