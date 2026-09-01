@@ -149,7 +149,7 @@ Two different mechanisms, deliberately kept apart:
 **Coupon codes** are ours. Percentage, fixed amount or free delivery; scoped to
 everything, a collection, a fit or one product; with minimum order, maximum
 discount, a date window, total and per-shopper usage limits, and a first-order
-flag. The rules live in one file, `web/src/lib/coupons.ts`, so the bag and the
+flag. The rules live in one file, `web/src/lib/coupons.js`, so the bag and the
 checkout can never disagree about whether a code is valid — the bag shows the
 discount, and the server re-validates it immediately before charging, because
 a code can expire or hit its limit while someone is filling in an address.
@@ -413,7 +413,7 @@ Then in Vercel → Settings → Domains → add it, and point the nameservers or
 
 ## The iOS app
 
-`web/capacitor.config.ts` wraps the deployed site in a native shell.
+`web/capacitor.config.js` wraps the deployed site in a native shell.
 
 ```bash
 cd web
@@ -487,7 +487,7 @@ cd web
 npm run dev            # development
 npm run build          # production build
 npm run lint           # eslint
-npx tsc --noEmit       # typecheck
+npm run test:razorpay  # signature verification suite
 
 cd ai
 uvicorn app:app --reload --port 8000
