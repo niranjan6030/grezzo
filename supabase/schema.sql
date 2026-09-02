@@ -322,6 +322,11 @@ declare
   v_avail         integer;
 begin
   -- Resolve every line to a sku up front and fail loudly on nonsense input.
+  --
+  -- Dropped first because `on commit drop` only fires at COMMIT: calling
+  -- reserve_stock twice inside one transaction otherwise fails with
+  -- `relation "_want" already exists`.
+  drop table if exists _want;
   create temp table _want (
     sku text primary key, product_id text, colour text, size integer, qty integer
   ) on commit drop;
@@ -371,7 +376,8 @@ begin
 
   if v_single_site is not null then
     insert into reservation_lines (reservation_id, sku, warehouse_code, qty)
-    select p_reservation_id, w.sku, v_single_site, w.qty from _want w;
+    select p_reservation_id, w.sku, v_single_site, w.qty from _want w
+    on conflict do nothing;
     return jsonb_build_object('ok', true, 'warehouse', v_single_site, 'split', false);
   end if;
 
@@ -520,3 +526,49 @@ create policy "variants readable"  on variants for select using (true);
 -- with the Firebase uid as `sub`, add policies like:
 --   create policy "orders are the customer's own" on orders
 --     for select using (auth.jwt() ->> 'sub' = user_id);
+
+-- =====================================================================
+-- Function privileges
+--
+-- RLS above protects the tables, but PostgREST also publishes every
+-- function in `public` at /rest/v1/rpc/<name>, and Postgres grants
+-- EXECUTE on a new function to the PUBLIC pseudo-role automatically.
+-- Without the revoke below, anyone holding the anon key — which ships to
+-- every browser — could call receive_stock to invent inventory or
+-- append_order_status to mark an arbitrary order paid. Verified by
+-- exploiting it against a live project before this was added.
+--
+-- Revoking from anon and authenticated alone is NOT enough; they inherit
+-- the grant from PUBLIC. Revoke from PUBLIC, then grant back to
+-- service_role, which is the only identity the route handlers use.
+-- =====================================================================
+do $$
+declare fn text;
+begin
+  for fn in
+    select format('%I(%s)', p.proname, pg_get_function_identity_arguments(p.oid))
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.proname in ('append_order_status','reserve_stock','commit_reservation',
+                        'release_reservation','expire_reservations','receive_stock',
+                        'available_by_variant','available_by_size')
+  loop
+    execute format('revoke all on function public.%s from public, anon, authenticated', fn);
+    execute format('grant execute on function public.%s to service_role', fn);
+  end loop;
+end $$;
+
+-- Functions added later inherit the same posture instead of being
+-- world-executable from the moment they are created.
+alter default privileges in schema public revoke execute on functions from public, anon, authenticated;
+
+-- A SECURITY DEFINER function with a mutable search_path can be hijacked by
+-- a caller who puts a same-named table earlier in their path. pg_temp last.
+alter function append_order_status(uuid, text, jsonb)        set search_path = public, pg_temp;
+alter function reserve_stock(text, text, integer, jsonb)     set search_path = public, pg_temp;
+alter function commit_reservation(text)                      set search_path = public, pg_temp;
+alter function release_reservation(text)                     set search_path = public, pg_temp;
+alter function expire_reservations()                         set search_path = public, pg_temp;
+alter function receive_stock(text, text, integer, text)      set search_path = public, pg_temp;
+alter function available_by_variant(text, text)              set search_path = public, pg_temp;
+alter function available_by_size(text, text)                 set search_path = public, pg_temp;
