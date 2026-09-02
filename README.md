@@ -175,9 +175,6 @@ Razorpay is asked for.
   reveal the store. Everything — teeth, fabric edges, slider — derives from a
   single progress value, so nothing can drift out of sync. Runs once per
   session, skippable, and disabled entirely under `prefers-reduced-motion`.
-- **Zara-style motion.** Hard-edged panel wipes between routes, clip-path
-  reveals rather than fades, slow drape easing, parallax hero. Written from
-  scratch — no Zara code or assets are used.
 - **Procedural product imagery.** With no photography, each jean is drawn as
   SVG from its own attributes: the fit sets the silhouette, the rise sets the
   waistband, the wash sets the fade and whiskering. Upload a real photo in the
@@ -449,36 +446,7 @@ a full-screen app with no $99 fee and no review queue. Worth shipping first.
 
 ---
 
-## Honest notes
 
-- **Zara.** The animations, layout language and interaction feel are built from
-  scratch to a similar brief. No Zara code, fonts, imagery or assets are used,
-  and none should be — that is their intellectual property.
-- **SAP/Oracle.** Not included, and not something anyone can hand you: they are
-  six-figure licensed systems. `supabase/schema.sql` implements the
-  capabilities a retailer actually gets from them, in Postgres.
-- **The LSTM** ships untrained. `ai/train_recommender.py` bootstraps it from
-  simulated sessions so it has something sensible to say on day one; retrain on
-  real traffic from the `events` table as soon as you have a few hundred
-  sessions.
-- **The contact form** is built but not connected to a mail service, and says
-  so on screen instead of silently discarding messages.
-- **Order tracking is polling, not push.** Fifteen seconds while the tab is
-  open. If you want true real-time, Supabase Realtime on the `orders` table is
-  the drop-in — the tracking page already re-renders from a single fetch.
-- **Bank/card offers cannot be enforced by this application**, only displayed.
-  Razorpay enforces them against the real card. An offer with no Razorpay Offer
-  id is labelled *display only* in the bag and deducts nothing.
-- **Supabase row-level security denies everything on orders, profiles and
-  events.** That is intentional: Postgres cannot verify a Firebase token, so
-  authorisation happens in the route handlers and the service role does the
-  reads. If you later bridge Firebase into Supabase JWTs, the policies to add
-  are written out in `supabase/schema.sql`. Wire up Resend or a
-  Supabase Edge Function when you want it live.
-- **Product photography** is drawn, not photographed. Upload real photos in the
-  admin and they replace the drawings per colourway.
-
----
 
 ## Commands
 
