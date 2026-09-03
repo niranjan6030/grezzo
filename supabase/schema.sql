@@ -235,15 +235,26 @@ create table if not exists shipments (
 
 -- Move an order along and record the step in one statement, so the status
 -- and its history can never disagree.
+--
+-- Razorpay confirms a payment twice: once from the browser callback, once
+-- from the webhook. Both are wanted, since either can be lost — the shopper
+-- closes the tab, or the webhook is delayed. Whichever lands second must not
+-- add a duplicate step to the history the tracking page draws, which is why
+-- a transition to the status already held is a no-op. Guarding in the route
+-- handlers is not enough: they read the status and act on it separately, so
+-- two confirmations arriving together can both see the old value.
 create or replace function append_order_status(
   p_order_id uuid, p_status text, p_entry jsonb
 ) returns void
-language sql security definer as $$
+language plpgsql security definer
+set search_path = public, pg_temp as $$
+begin
   update orders
   set status = p_status,
       timeline = timeline || p_entry
-  where id = p_order_id;
-$$;
+  where id = p_order_id
+    and status is distinct from p_status;
+end $$;
 
 -- ---------------------------------------------------------------------
 -- Behavioural events — training data for the LSTM recommender
