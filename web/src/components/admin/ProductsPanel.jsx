@@ -15,7 +15,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { WASH_NAMES, WASH_RAMP } from "@/lib/products";
+import { WASH_NAMES, WASH_RAMP, rampFrom } from "@/lib/products";
 import { downscaleImage } from "@/lib/downscale";
 
 import ProductImage from "@/components/ProductImage";
@@ -170,6 +170,8 @@ function Editor({ product, onClose }) {
   const [readOut, setReadOut] = useState(null);
   const [photos, setPhotos] = useState({});
   const [uploadFor, setUploadFor] = useState(null);
+  const [customName, setCustomName] = useState("");
+  const [customHex, setCustomHex] = useState("#3a5175");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [saved, setSaved] = useState(false);
@@ -185,6 +187,25 @@ function Editor({ product, onClose }) {
         ramp: WASH_RAMP[wash],
       },
     ]);
+  };
+
+  const addCustomColour = () => {
+    const label = customName.trim().slice(0, 40);
+    if (!label) return;
+    const code = label
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "");
+    // The code is part of every SKU for this colour, so a clash would put two
+    // colourways on one stock line.
+    if (!code || colours.some((c) => c.code === code)) {
+      setError(`There is already a colourway called ${label}.`);
+      return;
+    }
+    setError(null);
+    setColours((cs) => [...cs, { code, wash: label, ramp: rampFrom(customHex) }]);
+    setCustomName("");
   };
 
   const move = (i, dir) => {
@@ -597,6 +618,57 @@ function Editor({ product, onClose }) {
               </div>
             )}
 
+            {/* A colourway outside the eight built-in washes. Adding one here
+                creates its SKUs the next time stock is booked against it. */}
+            <div className="mt-4 border border-line bg-white p-4">
+              <p className="tracked text-xs text-ink-soft">Add your own colour</p>
+              <div className="mt-3 flex flex-wrap items-end gap-3">
+                <div className="min-w-[10rem] flex-1">
+                  <Input
+                    value={customName}
+                    onChange={(e) => setCustomName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        addCustomColour();
+                      }
+                    }}
+                    placeholder="Washed Olive"
+                  />
+                </div>
+                <label className="flex cursor-pointer items-center gap-2 border border-line px-3 py-2">
+                  <input
+                    type="color"
+                    value={customHex}
+                    onChange={(e) => setCustomHex(e.target.value)}
+                    className="h-6 w-6 cursor-pointer border-0 bg-transparent p-0"
+                    aria-label="Colour"
+                  />
+                  <span className="text-xs tabular-nums text-ink-soft">{customHex}</span>
+                </label>
+                <Button
+                  variant="outline"
+                  onClick={addCustomColour}
+                  disabled={!customName.trim()}
+                  className="flex items-center gap-2 py-2"
+                >
+                  <Plus size={14} strokeWidth={1.5} />
+                  Add
+                </Button>
+              </div>
+              <div className="mt-3 flex items-center gap-2">
+                <span className="text-xs text-ink-soft">Preview</span>
+                {rampFrom(customHex).map((h, i) => (
+                  <span
+                    key={i}
+                    className="h-5 w-5 border border-line"
+                    style={{ background: h }}
+                    title={h}
+                  />
+                ))}
+              </div>
+            </div>
+
             <input
               ref={fileInput}
               type="file"
@@ -660,7 +732,8 @@ const STD_SIZE_OPTIONS = [28, 30, 31, 32, 33, 34, 36, 38, 40];
  * required before the form will submit.
  */
 function Creator({ onClose }) {
-  const { createProduct } = useAdmin();
+  const { createProduct, saveProduct } = useAdmin();
+  const fileInput = useRef(null);
 
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
@@ -673,24 +746,86 @@ function Creator({ onClose }) {
   const [tags, setTags] = useState("");
   const [weightOz, setWeightOz] = useState("12");
   const [stretchPct, setStretchPct] = useState("0");
-  const [washes, setWashes] = useState([WASH_NAMES[0]]);
+  // Colourways as objects from the start, so a colour the shop invents is
+  // the same kind of thing as a built-in wash rather than a special case.
+  const [colours, setColours] = useState([
+    { code: "raw-indigo", wash: WASH_NAMES[0], ramp: WASH_RAMP[WASH_NAMES[0]] },
+  ]);
+  const [customName, setCustomName] = useState("");
+  const [customHex, setCustomHex] = useState("#3a5175");
   const [sizes, setSizes] = useState(STD_SIZE_OPTIONS);
   const [openingStock, setOpeningStock] = useState("12");
+  const [photos, setPhotos] = useState({});
+  const [uploadFor, setUploadFor] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [step, setStep] = useState(null);
   const [error, setError] = useState(null);
   const [done, setDone] = useState(null);
+
+  const pickPhoto = (code) => {
+    setUploadFor(code);
+    fileInput.current?.click();
+  };
+
+  const onFile = async (file) => {
+    if (!uploadFor) return;
+    setError(null);
+    try {
+      // Downscaled in the browser first: a phone photo is several megabytes
+      // and would not survive the request body limit.
+      const dataUrl = await downscaleImage(file);
+      setPhotos((ps) => ({ ...ps, [uploadFor]: dataUrl }));
+    } catch {
+      setError("Could not read that image file.");
+    } finally {
+      setUploadFor(null);
+      if (fileInput.current) fileInput.current.value = "";
+    }
+  };
 
   const toggle = (list, set, v) =>
     set(list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
 
-  const skuCount = washes.length * sizes.length;
+  const codeOf = (label) =>
+    label
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "");
+
+  const toggleWash = (w) =>
+    setColours((cs) =>
+      cs.some((c) => c.wash === w)
+        ? cs.filter((c) => c.wash !== w)
+        : [...cs, { code: codeOf(w), wash: w, ramp: WASH_RAMP[w] }],
+    );
+
+  const addCustom = () => {
+    const label = customName.trim().slice(0, 40);
+    if (!label) return;
+    const code = codeOf(label);
+    // The code becomes part of every SKU for this colour, so it has to be
+    // unique within the product or two colourways share one stock line.
+    if (!code || colours.some((c) => c.code === code)) {
+      setError(`There is already a colourway called ${label}.`);
+      return;
+    }
+    setError(null);
+    setColours((cs) => [...cs, { code, wash: label, ramp: rampFrom(customHex), custom: true }]);
+    setCustomName("");
+  };
+
+  const removeColour = (code) => setColours((cs) => cs.filter((c) => c.code !== code));
+
+  const skuCount = colours.length * sizes.length;
   const ready = name.trim().length >= 2 && Number(price) > 0 && skuCount > 0;
 
   const submit = async () => {
     setBusy(true);
     setError(null);
+    setStep("Creating the product");
     try {
-      await createProduct({
+      const created = await createProduct({
         name: name.trim(),
         pricePaise: Math.round(Number(price) * 100),
         comparePaise: compare ? Math.round(Number(compare) * 100) : null,
@@ -701,7 +836,7 @@ function Creator({ onClose }) {
         story: story.trim(),
         weightOz: Number(weightOz) || 12,
         stretchPct: Number(stretchPct) || 0,
-        washes,
+        colours: colours.map(({ code, wash, ramp }) => ({ code, wash, ramp })),
         sizes,
         openingStock: Number(openingStock) || 0,
         tags: tags
@@ -709,11 +844,25 @@ function Creator({ onClose }) {
           .map((t) => t.trim())
           .filter(Boolean),
       });
+
+      // Photography goes up after the product exists, one colourway per
+      // request. Sending them all with the create call would push a payload
+      // of several megabytes past the request body limit, and a failure
+      // there would lose the whole product rather than one image.
+      const id = created?.product?.id;
+      const entries = Object.entries(photos);
+      if (id && entries.length) {
+        for (const [code, dataUrl] of entries) {
+          setStep(`Uploading ${entries.findIndex(([c]) => c === code) + 1} of ${entries.length}`);
+          await saveProduct(id, { photos: { [code]: dataUrl } });
+        }
+      }
       setDone(name.trim());
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not create the product.");
     } finally {
       setBusy(false);
+      setStep(null);
     }
   };
 
@@ -750,8 +899,8 @@ function Creator({ onClose }) {
             <Sparkles size={26} strokeWidth={1.2} className="text-denim-mid" />
             <p className="tracked-lg text-lg">{done} is live</p>
             <p className="max-w-sm text-sm text-ink-soft">
-              It is in the catalogue with stock booked in. Add photography from its editor —
-              until then it shows the woven placeholder.
+              It is in the catalogue with stock booked in. Any colourway without a photo
+              shows the woven placeholder until you add one from its editor.
             </p>
             <Button onClick={onClose}>Done</Button>
           </div>
@@ -846,13 +995,14 @@ function Creator({ onClose }) {
                 <p className="text-xs text-ink-soft">
                   Each one is stocked separately. At least one is needed.
                 </p>
+
                 <div className="flex flex-wrap gap-2">
                   {WASH_NAMES.map((w) => {
-                    const on = washes.includes(w);
+                    const on = colours.some((c) => c.wash === w);
                     return (
                       <button
                         key={w}
-                        onClick={() => toggle(washes, setWashes, w)}
+                        onClick={() => toggleWash(w)}
                         className={`flex items-center gap-2 border px-3 py-2 text-xs transition-colors ${
                           on ? "border-denim-deep bg-denim-wash" : "border-line hover:border-denim-mid"
                         }`}
@@ -868,6 +1018,92 @@ function Creator({ onClose }) {
                     );
                   })}
                 </div>
+
+                {/* ---- a colour of your own ---- */}
+                <div className="border border-line bg-white p-4">
+                  <p className="tracked text-xs text-ink-soft">Add your own colour</p>
+                  <div className="mt-3 flex flex-wrap items-end gap-3">
+                    <div className="min-w-[10rem] flex-1">
+                      <Input
+                        value={customName}
+                        onChange={(e) => setCustomName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            addCustom();
+                          }
+                        }}
+                        placeholder="Washed Olive"
+                      />
+                    </div>
+                    <label className="flex cursor-pointer items-center gap-2 border border-line px-3 py-2">
+                      <input
+                        type="color"
+                        value={customHex}
+                        onChange={(e) => setCustomHex(e.target.value)}
+                        className="h-6 w-6 cursor-pointer border-0 bg-transparent p-0"
+                        aria-label="Colour"
+                      />
+                      <span className="text-xs tabular-nums text-ink-soft">{customHex}</span>
+                    </label>
+                    <Button
+                      variant="outline"
+                      onClick={addCustom}
+                      disabled={!customName.trim()}
+                      className="flex items-center gap-2 py-2"
+                    >
+                      <Plus size={14} strokeWidth={1.5} />
+                      Add
+                    </Button>
+                  </div>
+                  <div className="mt-3 flex items-center gap-2">
+                    <span className="text-xs text-ink-soft">Preview</span>
+                    {rampFrom(customHex).map((h, i) => (
+                      <span
+                        key={i}
+                        className="h-5 w-5 border border-line"
+                        style={{ background: h }}
+                        title={h}
+                      />
+                    ))}
+                    <span className="text-xs text-ink-soft">
+                      shadow, body and highlight, derived from your colour
+                    </span>
+                  </div>
+                </div>
+
+                {/* ---- what will actually be stocked ---- */}
+                {colours.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-xs text-ink-soft">
+                      {colours.length} colourway{colours.length === 1 ? "" : "s"} on this product
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {colours.map((c) => (
+                        <span
+                          key={c.code}
+                          className="flex items-center gap-2 border border-denim-deep bg-denim-wash py-1.5 pl-2 pr-1.5 text-xs"
+                        >
+                          <span
+                            className="h-4 w-4 rounded-full border border-line"
+                            style={{
+                              background: `linear-gradient(135deg, ${c.ramp[2]}, ${c.ramp[1]} 55%, ${c.ramp[0]})`,
+                            }}
+                          />
+                          {c.wash}
+                          {c.custom && <Pill>New</Pill>}
+                          <button
+                            onClick={() => removeColour(c.code)}
+                            aria-label={`Remove ${c.wash}`}
+                            className="text-ink-soft hover:text-ink"
+                          >
+                            <X size={13} strokeWidth={1.5} />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </section>
 
               <section className="space-y-4">
@@ -900,6 +1136,57 @@ function Creator({ onClose }) {
                 </Field>
               </section>
 
+              {/* ---- photography ---- */}
+              <section className="space-y-4">
+                <p className="tracked text-ink-soft">Photography</p>
+                <p className="text-xs text-ink-soft">
+                  One photo per colourway, so the right image shows when a shopper
+                  switches colour. Optional — anything without one falls back to the
+                  woven placeholder, and you can add them later.
+                </p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {colours.map((c) => (
+                    <button
+                      key={c.code}
+                      onClick={() => pickPhoto(c.code)}
+                      className="flex items-center gap-3 border border-line bg-white p-3 text-left transition-colors hover:border-denim-mid"
+                    >
+                      <span className="relative h-14 w-14 shrink-0 overflow-hidden border border-line">
+                        {photos[c.code] ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={photos[c.code]}
+                            alt=""
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <span
+                            className="block h-full w-full"
+                            style={{
+                              background: `linear-gradient(135deg, ${c.ramp[2]}, ${c.ramp[1]} 55%, ${c.ramp[0]})`,
+                            }}
+                          />
+                        )}
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block truncate text-xs">{c.wash}</span>
+                        <span className="mt-1 flex items-center gap-1.5 text-[0.68rem] text-ink-soft">
+                          <ImagePlus size={13} strokeWidth={1.4} />
+                          {photos[c.code] ? "Replace photo" : "Add photo"}
+                        </span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                <input
+                  ref={fileInput}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])}
+                />
+              </section>
+
               {error && <p className="text-sm text-red-700">{error}</p>}
             </div>
 
@@ -907,7 +1194,7 @@ function Creator({ onClose }) {
               <p className="text-xs text-ink-soft">
                 {skuCount === 0
                   ? "Pick at least one colourway and one size."
-                  : `${washes.length} colour${washes.length === 1 ? "" : "s"} \u00d7 ${sizes.length} size${sizes.length === 1 ? "" : "s"}`}
+                  : `${colours.length} colour${colours.length === 1 ? "" : "s"} \u00d7 ${sizes.length} size${sizes.length === 1 ? "" : "s"}`}
               </p>
               <div className="flex gap-3">
                 <Button variant="outline" onClick={onClose}>
@@ -915,7 +1202,7 @@ function Creator({ onClose }) {
                 </Button>
                 <Button onClick={submit} disabled={!ready || busy} className="flex items-center gap-2">
                   {busy && <Loader2 size={15} className="animate-spin" />}
-                  {busy ? "Creating" : "Create product"}
+                  {busy ? (step ?? "Creating") : "Create product"}
                 </Button>
               </div>
             </div>

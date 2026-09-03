@@ -39,6 +39,9 @@
   --color-denim-mid: var(--denim-mid);
   --color-denim-light: var(--denim-light);
   --color-denim-wash: var(--denim-wash);
+  /* Was missing, so `bg-denim-paper` silently produced no rule at all and
+     every admin drawer rendered with a transparent background. */
+  --color-denim-paper: var(--denim-paper);
   --color-thread: var(--thread);
   --color-ink: var(--ink);
   --color-ink-soft: var(--ink-soft);

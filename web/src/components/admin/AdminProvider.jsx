@@ -50,10 +50,14 @@ export function AdminProvider({ children }) {
   // No fetch on mount: AdminShell calls reload() once the session check has
   // passed, so the console never fires a request it knows will 401.
 
+  // Returns whatever the request resolved to, so a caller that needs the
+  // created record — the product creator attaching photography, say — can
+  // reach it without a second round trip.
   const after = useCallback(
     async (p) => {
-      await p;
+      const result = await p;
       await reload();
+      return result;
     },
     [reload],
   );

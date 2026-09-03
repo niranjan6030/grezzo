@@ -335,6 +335,23 @@ function featureVector(p) {
 }
 
 /**
+ * A three-stop ramp from a single picked colour.
+ *
+ * Every colourway renders as shadow → body → highlight, so a custom colour
+ * cannot just be one hex. The seeded washes were sampled from real denim;
+ * these are derived, which is close enough for a colour the shop invents
+ * and keeps admin-created products looking like the rest of the range.
+ */
+export function rampFrom(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex).trim());
+  const n = parseInt(m ? m[1] : "3a5175", 16);
+  const c = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  const toward = (t, amt) => c.map((v) => Math.round(v + (t - v) * amt));
+  const hexOf = (rgb) => `#${rgb.map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+  return [hexOf(toward(0, 0.42)), hexOf(c), hexOf(toward(255, 0.34))];
+}
+
+/**
  * Turn a bare seed into a full catalogue product.
  *
  * Exported because products added from the admin console must be built the
@@ -343,18 +360,32 @@ function featureVector(p) {
  * renders slightly differently or never appears in recommendations.
  */
 export function buildProduct(s) {
-  const washes = (s.washes ?? []).filter((w) => WASH_RAMP[w]);
-  const safe = washes.length ? washes : [WASHES[0]];
-  const colours = safe.map((w) => ({ code: washCode(w), wash: w, ramp: WASH_RAMP[w] }));
+  // A product created in the console may define colourways of its own, with
+  // names and ramps that are not in WASH_RAMP at all. Those win when present;
+  // otherwise the seed's named washes are resolved against the shared ramps.
+  const explicit = (s.colours ?? []).filter(
+    (c) => c?.code && c?.wash && Array.isArray(c?.ramp) && c.ramp.length === 3,
+  );
+
+  let colours;
+  if (explicit.length) {
+    colours = explicit;
+  } else {
+    const named = (s.washes ?? []).filter((w) => WASH_RAMP[w]);
+    const safe = named.length ? named : [WASHES[0]];
+    colours = safe.map((w) => ({ code: washCode(w), wash: w, ramp: WASH_RAMP[w] }));
+  }
+
+  const washes = colours.map((c) => c.wash);
   return {
     ...s,
-    washes: safe,
+    washes,
     sizes: s.sizes?.length ? s.sizes : STD,
     tags: s.tags ?? [],
     colours,
     wash: colours[0].wash,
     ramp: colours[0].ramp,
-    vector: featureVector({ ...s, washes: safe }),
+    vector: featureVector({ ...s, washes }),
   };
 }
 

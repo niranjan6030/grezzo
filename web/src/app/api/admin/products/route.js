@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin/auth";
 import { readAdminData, updateAdminData } from "@/lib/admin/store";
 
-import { PRODUCTS, WASH_NAMES, buildProduct, byId } from "@/lib/products";
+import { PRODUCTS, buildProduct, byId } from "@/lib/products";
 import {
   deactivateProduct,
   newProductId,
@@ -216,9 +216,29 @@ const _post = async (req) => {
   if (!FITS.includes(body.fit)) return bad(`Unknown fit: ${body.fit}`);
   if (!RISES.includes(body.rise)) return bad(`Unknown rise: ${body.rise}`);
 
-  // Washes drive the colour ramps, so only ones the design system knows.
-  const washes = [...new Set((Array.isArray(body.washes) ? body.washes : []).filter((w) => WASH_NAMES.includes(w)))];
-  if (washes.length === 0) return bad("Choose at least one colourway.");
+  // Colourways arrive fully resolved: the built-in washes carry the shared
+  // ramps, and a colour the shop invented carries its own. Both are validated
+  // the same way, because from here on nothing downstream distinguishes them.
+  const seen = new Set();
+  const colours = [];
+  for (const c of Array.isArray(body.colours) ? body.colours : []) {
+    const wash = String(c?.wash ?? "").trim().slice(0, 40);
+    const ramp = Array.isArray(c?.ramp) ? c.ramp.map((h) => String(h).trim()) : [];
+    if (!wash) continue;
+    if (ramp.length !== 3 || !ramp.every((h) => /^#[0-9a-f]{6}$/i.test(h))) continue;
+    const code = String(c?.code || wash)
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 32);
+    // The code becomes part of every SKU, so a duplicate would collapse two
+    // colourways onto the same stock.
+    if (!code || seen.has(code)) continue;
+    seen.add(code);
+    colours.push({ code, wash, ramp });
+  }
+  if (colours.length === 0) return bad("Choose or add at least one colourway.");
 
   const sizes = [
     ...new Set(
@@ -247,7 +267,7 @@ const _post = async (req) => {
     comparePaise: comparePaise ?? undefined,
     fit: body.fit,
     rise: body.rise,
-    washes,
+    colours,
     sizes,
     fabric: String(body.fabric ?? "").slice(0, 200) || undefined,
     weightOz: Number.isFinite(Number(body.weightOz)) ? Number(body.weightOz) : 12,
@@ -284,7 +304,7 @@ const _post = async (req) => {
   return NextResponse.json({
     ok: true,
     product: { id, slug, name },
-    skus: provisioned.skus.length || sizes.length * washes.length,
+    skus: provisioned.skus.length || sizes.length * colours.length,
     warehouse: provisioned.warehouse,
     backend: provisioned.backend,
   });
