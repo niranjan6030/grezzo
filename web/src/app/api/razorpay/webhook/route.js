@@ -5,6 +5,17 @@ import { getAdminSupabase } from "@/lib/supabase/server";
 import { updateAdminData } from "@/lib/admin/store";
 import { applyRedemption } from "@/lib/coupons";
 
+/** Move an order on AND record the step, in one statement. The database
+ *  function keeps `status` and `timeline` from ever disagreeing. */
+async function advance(db, id, status, note) {
+  const { error } = await db.rpc("append_order_status", {
+    p_order_id: id,
+    p_status: status,
+    p_entry: { status, at: new Date().toISOString(), note },
+  });
+  if (error) console.error("[orders] could not append status", status, error);
+}
+
 const WEBHOOK_SECRET = process.env.RAZORPAY_WEBHOOK_SECRET;
 
 /** Authoritative payment state. Razorpay retries this, so every branch has to
@@ -46,11 +57,11 @@ export async function POST(req) {
         await db
           .from("orders")
           .update({
-            status: "paid",
             razorpay_payment_id: event.payload.payment.entity.id,
             paid_at: new Date().toISOString(),
           })
           .eq("id", order.id);
+        await advance(db, order.id, "paid", "Payment received");
         if (order.coupon_code) {
           // applyRedemption is keyed on the order id, so a retried webhook
           // cannot count the same redemption twice.
@@ -65,12 +76,12 @@ export async function POST(req) {
     case "order.paid.failed": {
       if (order.status !== "paid") {
         await releaseReservation(order.reservation_id);
-        await db.from("orders").update({ status: "failed" }).eq("id", order.id);
+        await advance(db, order.id, "failed", "Payment failed");
       }
       break;
     }
     case "refund.processed": {
-      await db.from("orders").update({ status: "refunded" }).eq("id", order.id);
+      await advance(db, order.id, "refunded", "Refund processed");
       break;
     }
   }

@@ -19,13 +19,24 @@ export async function loadOrders(limit = 400) {
     return [];
   }
 
+  // Every column the callers actually read. `userId` in particular: without
+  // it /api/orders/mine compares undefined against the signed-in uid and a
+  // shopper's own order history comes back empty forever.
   return (data ?? []).map((r) => ({
     id: String(r.id),
     receipt: String(r.receipt),
+    userId: r.user_id ?? undefined,
     razorpayOrderId: r.razorpay_order_id ?? undefined,
     razorpayPaymentId: r.razorpay_payment_id ?? undefined,
     email: r.email ?? undefined,
+    phone: r.phone ?? undefined,
     pincode: r.pincode ?? undefined,
+    address: r.address ?? undefined,
+    paymentMethod: r.payment_method ?? undefined,
+    couponCode: r.coupon_code ?? undefined,
+    couponDiscountPaise: Number(r.coupon_discount_paise ?? 0),
+    codFeePaise: Number(r.cod_fee_paise ?? 0),
+    reservationId: r.reservation_id ?? undefined,
     status: r.status,
     subtotalPaise: Number(r.subtotal_paise),
     shippingPaise: Number(r.shipping_paise),

@@ -140,6 +140,9 @@ const _post = async (req) => {
       total_paise: totals.totalPaise,
       reservation_id: reservation.id,
       lines: totals.lines,
+      // Built above but previously left behind, so Postgres kept `[]` and
+      // the tracking page had nothing to render.
+      timeline: order.timeline,
     });
   }
 

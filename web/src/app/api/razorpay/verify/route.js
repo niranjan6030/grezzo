@@ -5,6 +5,17 @@ import { getAdminSupabase } from "@/lib/supabase/server";
 import { updateAdminData } from "@/lib/admin/store";
 import { applyRedemption } from "@/lib/coupons";
 
+/** Move an order on AND record the step, in one statement. The database
+ *  function keeps `status` and `timeline` from ever disagreeing. */
+async function advance(db, id, status, note) {
+  const { error } = await db.rpc("append_order_status", {
+    p_order_id: id,
+    p_status: status,
+    p_entry: { status, at: new Date().toISOString(), note },
+  });
+  if (error) console.error("[orders] could not append status", status, error);
+}
+
 const KEY_SECRET = process.env.RAZORPAY_KEY_SECRET;
 
 /** Signature check on the client callback. The webhook is the authoritative
@@ -58,14 +69,11 @@ export async function POST(req) {
     if (db) {
       const { data } = await db
         .from("orders")
-        .select("reservation_id")
+        .select("id, reservation_id")
         .eq("razorpay_order_id", razorpay_order_id)
         .single();
       if (data?.reservation_id) await releaseReservation(data.reservation_id);
-      await db
-        .from("orders")
-        .update({ status: "signature_failed" })
-        .eq("razorpay_order_id", razorpay_order_id);
+      if (data?.id) await advance(db, data.id, "signature_failed", "Signature check failed");
     }
     await markLocally("signature_failed");
     return NextResponse.json({ verified: false }, { status: 400 });
@@ -80,12 +88,9 @@ export async function POST(req) {
     if (data?.reservation_id) await commitReservation(data.reservation_id);
     await db
       .from("orders")
-      .update({
-        status: "paid",
-        razorpay_payment_id,
-        paid_at: new Date().toISOString(),
-      })
+      .update({ razorpay_payment_id, paid_at: new Date().toISOString() })
       .eq("razorpay_order_id", razorpay_order_id);
+    if (data?.id) await advance(db, data.id, "paid", "Payment received");
 
     // Redemption counts live in the config blob either way, so they are
     // recorded here even when Postgres holds the order.

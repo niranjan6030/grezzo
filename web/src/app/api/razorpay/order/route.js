@@ -203,6 +203,7 @@ export async function POST(req) {
         total_paise: totals.totalPaise,
         reservation_id: reservation.id,
         lines: totals.lines,
+        timeline: [{ status: "created", at: new Date().toISOString(), note: "Checkout started" }],
       });
     }
     await recordLocally(order.id);
