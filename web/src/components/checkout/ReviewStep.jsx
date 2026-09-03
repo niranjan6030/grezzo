@@ -34,6 +34,36 @@ export default function ReviewStep() {
   const track = useStore((s) => s.track);
   const { addressId, code, method, setCode, setMethod, reset } = useCheckout();
 
+  // Which methods this Razorpay account can actually take. `null` means we
+  // could not ask, in which case everything stays on offer rather than
+  // blocking checkout on a failed lookup.
+  const [available, setAvailable] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/payment-methods")
+      .then((r) => r.json())
+      .then((j) => alive && setAvailable(j.methods ?? null))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const methods = useMemo(
+    () => PAYMENT_METHODS.filter((m) => !m.online || !available || available[m.id]),
+    [available],
+  );
+
+  // The stored preference defaults to UPI and persists between visits, so a
+  // shopper can arrive with a method selected that the account cannot take.
+  // Checkout would then open restricted to it and dead-end inside Razorpay.
+  useEffect(() => {
+    if (!available) return;
+    if (methods.some((m) => m.id === method)) return;
+    const first = methods.find((m) => m.online) ?? methods[0];
+    if (first) setMethod(first.id);
+  }, [available, methods, method, setMethod]);
+
   const [address, setAddress] = useState(null);
   const [codeInput, setCodeInput] = useState("");
   const [bankOfferId, setBankOfferId] = useState(null);
@@ -155,6 +185,15 @@ export default function ReviewStep() {
         return;
       }
 
+      // Indian mobile numbers are stored as ten digits; Razorpay wants them
+      // in +91 form. Anything already carrying a country code is left alone.
+      const e164 = (raw) => {
+        const d = String(raw ?? "").replace(/\D/g, "");
+        if (d.length === 10) return `+91${d}`;
+        if (d.length === 12 && d.startsWith("91")) return `+${d}`;
+        return d ? `+${d}` : "";
+      };
+
       // Open Razorpay straight onto the rail already chosen, rather than
       // making someone pick a payment method twice.
       const only = (m) => ({
@@ -177,7 +216,10 @@ export default function ReviewStep() {
         method: only(method),
         prefill: {
           email: user?.email ?? "",
-          contact: address?.phone ?? user?.phoneNumber ?? "",
+          // Razorpay's contact field wants an international number. A bare
+          // ten-digit one is dropped, and the shopper is then asked to type
+          // a number the shop already has on the delivery address.
+          contact: e164(address?.phone ?? user?.phoneNumber),
           name: address?.name ?? user?.displayName ?? "",
         },
         handler: async (response) => {
@@ -348,7 +390,7 @@ export default function ReviewStep() {
         <section className="mt-10 scroll-mt-24" id="payment">
           <p className="tracked border-b border-line pb-3">How would you like to pay?</p>
           <div className="mt-4 space-y-2">
-            {PAYMENT_METHODS.map((m) => {
+            {methods.map((m) => {
               const disabled = m.id === "cod" && Boolean(codBlocked);
               return (
                 <label
