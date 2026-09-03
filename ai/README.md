@@ -1,3 +1,14 @@
+---
+title: Grezzo AI
+emoji: 👖
+colorFrom: indigo
+colorTo: blue
+sdk: docker
+app_port: 7860
+pinned: false
+short_description: LSTM recommendations and CLIP visual search for Grezzo
+---
+
 # Grezzo AI service
 
 Two models behind one small FastAPI app:
