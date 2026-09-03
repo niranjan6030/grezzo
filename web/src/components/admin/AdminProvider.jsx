@@ -68,6 +68,7 @@ export function AdminProvider({ children }) {
       stats,
       error,
       reload,
+      createProduct: (p) => after(send("/api/admin/products", "POST", p)),
       saveProduct: (productId, patch) =>
         after(send("/api/admin/products", "PATCH", { productId, ...patch })),
       resetProduct: (productId) => after(send("/api/admin/products", "DELETE", { productId })),

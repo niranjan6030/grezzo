@@ -320,26 +320,52 @@ const seeds = [
 /** Normalised feature vector — the content half of the recommender, and the
  *  metadata the LSTM service embeds alongside each item id. */
 function featureVector(p) {
+  // indexOf returns -1 for anything off-scale, which would drag the vector
+  // negative and skew every similarity score. Admin-created products come
+  // from free-ish input, so clamp rather than trust.
+  const at = (list, v) => Math.max(list.indexOf(v), 0) / (list.length - 1);
   return [
-    FITS.indexOf(p.fit) / (FITS.length - 1),
-    RISES.indexOf(p.rise) / (RISES.length - 1),
-    WASHES.indexOf(p.washes[0]) / (WASHES.length - 1),
-    Math.min(p.pricePaise / 1000000, 1),
-    Math.min(p.weightOz / 16, 1),
-    p.stretchPct / 25,
+    at(FITS, p.fit),
+    at(RISES, p.rise),
+    at(WASHES, p.washes[0]),
+    Math.min((p.pricePaise ?? 0) / 1000000, 1),
+    Math.min((p.weightOz ?? 0) / 16, 1),
+    Math.min((p.stretchPct ?? 0) / 25, 1),
   ];
 }
 
-export const PRODUCTS = seeds.map((s) => {
-  const colours = s.washes.map((w) => ({ code: washCode(w), wash: w, ramp: WASH_RAMP[w] }));
+/**
+ * Turn a bare seed into a full catalogue product.
+ *
+ * Exported because products added from the admin console must be built the
+ * exact same way as the ones in this file — same colour objects, same wash
+ * ramps, same feature vector. Any divergence shows up as a product that
+ * renders slightly differently or never appears in recommendations.
+ */
+export function buildProduct(s) {
+  const washes = (s.washes ?? []).filter((w) => WASH_RAMP[w]);
+  const safe = washes.length ? washes : [WASHES[0]];
+  const colours = safe.map((w) => ({ code: washCode(w), wash: w, ramp: WASH_RAMP[w] }));
   return {
     ...s,
+    washes: safe,
+    sizes: s.sizes?.length ? s.sizes : STD,
+    tags: s.tags ?? [],
     colours,
     wash: colours[0].wash,
     ramp: colours[0].ramp,
-    vector: featureVector(s),
+    vector: featureVector({ ...s, washes: safe }),
   };
-});
+}
+
+export const PRODUCTS = seeds.map(buildProduct);
+
+/* The vocabularies the admin console offers when creating a product. They
+   live here so the console can never invent a fit or wash the rest of the
+   catalogue does not understand. */
+export const FIT_NAMES = FITS;
+export const RISE_NAMES = RISES;
+export const STD_SIZES = STD;
 
 export const colourOf = (p, code) => p.colours.find((c) => c.code === code) ?? p.colours[0];
 

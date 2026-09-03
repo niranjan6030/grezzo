@@ -572,3 +572,63 @@ alter function expire_reservations()                         set search_path = p
 alter function receive_stock(text, text, integer, text)      set search_path = public, pg_temp;
 alter function available_by_variant(text, text)              set search_path = public, pg_temp;
 alter function available_by_size(text, text)                 set search_path = public, pg_temp;
+
+-- =====================================================================
+-- Console stock control
+--
+-- receive_stock only ever adds. The admin console also has to correct a
+-- count to an absolute figure after a stocktake, and read the whole grid
+-- for a product in one round trip.
+-- =====================================================================
+
+create or replace function set_stock(
+  p_sku text, p_warehouse text, p_qty integer, p_reference text default null
+) returns integer
+language plpgsql security definer
+set search_path = public, pg_temp as $$
+declare
+  v_current integer;
+  v_delta   integer;
+begin
+  if p_qty < 0 then
+    raise exception 'stock cannot be negative';
+  end if;
+
+  select on_hand into v_current
+  from inventory where sku = p_sku and warehouse_code = p_warehouse for update;
+
+  if v_current is null then
+    insert into inventory (sku, warehouse_code, on_hand) values (p_sku, p_warehouse, 0);
+    v_current := 0;
+  end if;
+
+  v_delta := p_qty - v_current;
+  if v_delta = 0 then return p_qty; end if;
+
+  update inventory set on_hand = p_qty, updated_at = now()
+  where sku = p_sku and warehouse_code = p_warehouse;
+
+  -- The correction is recorded rather than applied silently, so a count
+  -- that turns out to be wrong can still be explained afterwards.
+  insert into stock_movements (sku, warehouse_code, kind, qty, reference, note)
+  values (p_sku, p_warehouse, 'cycle_count', v_delta, p_reference, 'counted in console');
+
+  return p_qty;
+end $$;
+
+create or replace function stock_grid(p_product_id text)
+returns table (sku text, colour text, size integer, on_hand integer, available integer)
+language sql stable
+set search_path = public, pg_temp as $$
+  select v.sku, v.colour, v.size,
+         coalesce((select sum(i.on_hand) from inventory i where i.sku = v.sku), 0)::integer,
+         greatest(available_by_variant(v.sku), 0)::integer
+  from variants v
+  where v.product_id = p_product_id
+  order by v.colour, v.size;
+$$;
+
+revoke all on function set_stock(text, text, integer, text) from public, anon, authenticated;
+grant execute on function set_stock(text, text, integer, text) to service_role;
+revoke all on function stock_grid(text) from public, anon, authenticated;
+grant execute on function stock_grid(text) to service_role;

@@ -1,4 +1,4 @@
-import { PRODUCTS } from "./products";
+import { PRODUCTS, buildProduct } from "./products";
 
 /** Is this offer live right now? */
 export function offerActive(o, now = Date.now()) {
@@ -37,7 +37,16 @@ function discounted(paise, o) {
 export function mergeCatalogue(data, now = Date.now()) {
   const live = data.offers.filter((o) => offerActive(o, now));
 
-  return PRODUCTS.map((base) => {
+  // Built-in products plus anything the admin created. Custom ones are run
+  // through buildProduct so they carry the same colour objects, wash ramps
+  // and feature vector as the seeded range — from here on the two are
+  // indistinguishable, which is the point.
+  const allBase = [
+    ...PRODUCTS,
+    ...(data.customProducts ?? []).map((c) => buildProduct(c)),
+  ];
+
+  return allBase.map((base) => {
     const ov = data.products[base.id] ?? {};
     const colours = ov.colours?.length ? ov.colours : base.colours;
 

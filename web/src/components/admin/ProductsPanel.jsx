@@ -39,6 +39,7 @@ export default function ProductsPanel() {
   const { catalogue, loading, data } = useAdmin();
   const [q, setQ] = useState("");
   const [editing, setEditing] = useState(null);
+  const [creating, setCreating] = useState(false);
 
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -55,6 +56,12 @@ export default function ProductsPanel() {
       <PanelHead
         title="Products"
         sub="Prices, descriptions, colourways and photography. Changes go live immediately."
+        action={
+          <Button onClick={() => setCreating(true)} className="flex items-center gap-2">
+            <Plus size={15} strokeWidth={1.5} />
+            New product
+          </Button>
+        }
       />
 
       <div className="relative mb-6 max-w-md">
@@ -93,7 +100,11 @@ export default function ProductsPanel() {
                 <div className="p-4">
                   <div className="flex items-start justify-between gap-3">
                     <p className="tracked">{p.name}</p>
-                    {data?.products[p.id] && <Pill>Edited</Pill>}
+                    {(data?.customProducts ?? []).some((c) => c.id === p.id) ? (
+                      <Pill tone="good">Added</Pill>
+                    ) : (
+                      data?.products[p.id] && <Pill>Edited</Pill>
+                    )}
                   </div>
                   <p className="mt-2 text-sm tabular-nums">
                     {rupees(p.pricePaise)}
@@ -128,6 +139,7 @@ export default function ProductsPanel() {
 
       <AnimatePresence>
         {product && <Editor key={product.id} product={product} onClose={() => setEditing(null)} />}
+        {creating && <Creator key="creator" onClose={() => setCreating(false)} />}
       </AnimatePresence>
     </>
   );
@@ -630,6 +642,285 @@ function Editor({ product, onClose }) {
             </Button>
           </div>
         </div>
+      </motion.aside>
+    </>
+  );
+}
+
+/* ====================================================================== */
+
+const STD_SIZE_OPTIONS = [28, 30, 31, 32, 33, 34, 36, 38, 40];
+
+/**
+ * Create a product.
+ *
+ * Colourways and sizes are not decoration here: together they decide which
+ * SKUs get created and stocked. A product saved with no colour or no size
+ * would list fine and then refuse every size at checkout, so both are
+ * required before the form will submit.
+ */
+function Creator({ onClose }) {
+  const { createProduct } = useAdmin();
+
+  const [name, setName] = useState("");
+  const [price, setPrice] = useState("");
+  const [compare, setCompare] = useState("");
+  const [fit, setFit] = useState("Straight");
+  const [rise, setRise] = useState("Mid");
+  const [collection, setCollection] = useState("Core");
+  const [fabric, setFabric] = useState("");
+  const [story, setStory] = useState("");
+  const [tags, setTags] = useState("");
+  const [weightOz, setWeightOz] = useState("12");
+  const [stretchPct, setStretchPct] = useState("0");
+  const [washes, setWashes] = useState([WASH_NAMES[0]]);
+  const [sizes, setSizes] = useState(STD_SIZE_OPTIONS);
+  const [openingStock, setOpeningStock] = useState("12");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const [done, setDone] = useState(null);
+
+  const toggle = (list, set, v) =>
+    set(list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
+
+  const skuCount = washes.length * sizes.length;
+  const ready = name.trim().length >= 2 && Number(price) > 0 && skuCount > 0;
+
+  const submit = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await createProduct({
+        name: name.trim(),
+        pricePaise: Math.round(Number(price) * 100),
+        comparePaise: compare ? Math.round(Number(compare) * 100) : null,
+        fit,
+        rise,
+        collection: collection.trim() || "Core",
+        fabric: fabric.trim(),
+        story: story.trim(),
+        weightOz: Number(weightOz) || 12,
+        stretchPct: Number(stretchPct) || 0,
+        washes,
+        sizes,
+        openingStock: Number(openingStock) || 0,
+        tags: tags
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean),
+      });
+      setDone(name.trim());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not create the product.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <motion.div
+        className="fixed inset-0 z-40 bg-denim-raw/30"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+      />
+      <motion.aside
+        className="fixed inset-y-0 right-0 z-50 flex w-full max-w-2xl flex-col bg-denim-paper"
+        initial={{ x: "100%" }}
+        animate={{ x: 0 }}
+        exit={{ x: "100%" }}
+        transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+      >
+        <div className="flex items-start justify-between border-b border-line bg-white px-6 py-5">
+          <div>
+            <p className="tracked-lg text-lg">New product</p>
+            <p className="mt-1.5 text-xs text-ink-soft">
+              {skuCount} SKU{skuCount === 1 ? "" : "s"} will be created and stocked
+            </p>
+          </div>
+          <button onClick={onClose} aria-label="Close">
+            <X size={20} strokeWidth={1.3} />
+          </button>
+        </div>
+
+        {done ? (
+          <div className="flex flex-1 flex-col items-center justify-center gap-5 px-8 text-center">
+            <Sparkles size={26} strokeWidth={1.2} className="text-denim-mid" />
+            <p className="tracked-lg text-lg">{done} is live</p>
+            <p className="max-w-sm text-sm text-ink-soft">
+              It is in the catalogue with stock booked in. Add photography from its editor —
+              until then it shows the woven placeholder.
+            </p>
+            <Button onClick={onClose}>Done</Button>
+          </div>
+        ) : (
+          <>
+            <div className="flex-1 space-y-9 overflow-y-auto px-6 py-7">
+              <section className="space-y-5">
+                <p className="tracked text-ink-soft">Details</p>
+                <Field label="Name">
+                  <Input
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Kyoto Wide Leg"
+                  />
+                </Field>
+                <div className="grid gap-5 sm:grid-cols-2">
+                  <Field label="Price" hint="In rupees.">
+                    <Input
+                      inputMode="numeric"
+                      value={price}
+                      onChange={(e) => setPrice(e.target.value.replace(/[^\d]/g, ""))}
+                      placeholder="5490"
+                    />
+                  </Field>
+                  <Field label="Compare at" hint="Optional. Shown struck through.">
+                    <Input
+                      inputMode="numeric"
+                      value={compare}
+                      onChange={(e) => setCompare(e.target.value.replace(/[^\d]/g, ""))}
+                      placeholder="6990"
+                    />
+                  </Field>
+                </div>
+                <div className="grid gap-5 sm:grid-cols-2">
+                  <Field label="Fit">
+                    <Select value={fit} onChange={(e) => setFit(e.target.value)}>
+                      {FIT_OPTIONS.map((f) => (
+                        <option key={f}>{f}</option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <Field label="Rise">
+                    <Select value={rise} onChange={(e) => setRise(e.target.value)}>
+                      {RISE_OPTIONS.map((r) => (
+                        <option key={r}>{r}</option>
+                      ))}
+                    </Select>
+                  </Field>
+                </div>
+                <div className="grid gap-5 sm:grid-cols-2">
+                  <Field label="Collection">
+                    <Input value={collection} onChange={(e) => setCollection(e.target.value)} />
+                  </Field>
+                  <Field label="Fabric">
+                    <Input
+                      value={fabric}
+                      onChange={(e) => setFabric(e.target.value)}
+                      placeholder="100% cotton"
+                    />
+                  </Field>
+                </div>
+                <Field label="Description" hint="Shown on the product page under the price.">
+                  <Textarea rows={3} value={story} onChange={(e) => setStory(e.target.value)} />
+                </Field>
+                <div className="grid gap-5 sm:grid-cols-2">
+                  <Field label="Weight (oz)">
+                    <Input
+                      inputMode="decimal"
+                      value={weightOz}
+                      onChange={(e) => setWeightOz(e.target.value)}
+                    />
+                  </Field>
+                  <Field label="Stretch %">
+                    <Input
+                      inputMode="numeric"
+                      value={stretchPct}
+                      onChange={(e) => setStretchPct(e.target.value.replace(/[^\d]/g, ""))}
+                    />
+                  </Field>
+                </div>
+                <Field label="Tags" hint="Comma separated. Used by search and recommendations.">
+                  <Input
+                    value={tags}
+                    onChange={(e) => setTags(e.target.value)}
+                    placeholder="wide, high-rise, drapey"
+                  />
+                </Field>
+              </section>
+
+              <section className="space-y-4">
+                <p className="tracked text-ink-soft">Colourways</p>
+                <p className="text-xs text-ink-soft">
+                  Each one is stocked separately. At least one is needed.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {WASH_NAMES.map((w) => {
+                    const on = washes.includes(w);
+                    return (
+                      <button
+                        key={w}
+                        onClick={() => toggle(washes, setWashes, w)}
+                        className={`flex items-center gap-2 border px-3 py-2 text-xs transition-colors ${
+                          on ? "border-denim-deep bg-denim-wash" : "border-line hover:border-denim-mid"
+                        }`}
+                      >
+                        <span
+                          className="h-4 w-4 rounded-full border border-line"
+                          style={{
+                            background: `linear-gradient(135deg, ${WASH_RAMP[w][2]}, ${WASH_RAMP[w][1]} 55%, ${WASH_RAMP[w][0]})`,
+                          }}
+                        />
+                        {w}
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+
+              <section className="space-y-4">
+                <p className="tracked text-ink-soft">Sizes</p>
+                <div className="flex flex-wrap gap-2">
+                  {STD_SIZE_OPTIONS.map((z) => {
+                    const on = sizes.includes(z);
+                    return (
+                      <button
+                        key={z}
+                        onClick={() => toggle(sizes, setSizes, z)}
+                        className={`w-12 border px-2 py-2 text-xs tabular-nums transition-colors ${
+                          on ? "border-denim-deep bg-denim-wash" : "border-line hover:border-denim-mid"
+                        }`}
+                      >
+                        {z}
+                      </button>
+                    );
+                  })}
+                </div>
+                <Field
+                  label="Opening stock"
+                  hint={`Units of each size, in each colour. ${skuCount} SKUs \u00d7 ${openingStock || 0} = ${skuCount * (Number(openingStock) || 0)} units.`}
+                >
+                  <Input
+                    inputMode="numeric"
+                    value={openingStock}
+                    onChange={(e) => setOpeningStock(e.target.value.replace(/[^\d]/g, ""))}
+                  />
+                </Field>
+              </section>
+
+              {error && <p className="text-sm text-red-700">{error}</p>}
+            </div>
+
+            <div className="flex items-center justify-between gap-3 border-t border-line bg-white px-6 py-4">
+              <p className="text-xs text-ink-soft">
+                {skuCount === 0
+                  ? "Pick at least one colourway and one size."
+                  : `${washes.length} colour${washes.length === 1 ? "" : "s"} \u00d7 ${sizes.length} size${sizes.length === 1 ? "" : "s"}`}
+              </p>
+              <div className="flex gap-3">
+                <Button variant="outline" onClick={onClose}>
+                  Cancel
+                </Button>
+                <Button onClick={submit} disabled={!ready || busy} className="flex items-center gap-2">
+                  {busy && <Loader2 size={15} className="animate-spin" />}
+                  {busy ? "Creating" : "Create product"}
+                </Button>
+              </div>
+            </div>
+          </>
+        )}
       </motion.aside>
     </>
   );

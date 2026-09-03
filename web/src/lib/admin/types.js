@@ -19,7 +19,13 @@
    ------------------------------------------------------------------ */
 
 export const EMPTY_ADMIN_DATA = {
+  // Edits to the built-in catalogue, keyed by product id.
   products: {},
+  // Whole products created in the console. Kept here rather than read from
+  // the Postgres `products` table so mergeCatalogue can stay synchronous —
+  // it is called from pricing paths that must not become async. The row in
+  // Postgres still exists; it anchors the variants foreign key.
+  customProducts: [],
   offers: [],
   coupons: [],
   bankOffers: [],

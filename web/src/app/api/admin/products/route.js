@@ -1,10 +1,23 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin/auth";
-import { updateAdminData } from "@/lib/admin/store";
+import { readAdminData, updateAdminData } from "@/lib/admin/store";
 
-import { byId } from "@/lib/products";
+import { PRODUCTS, WASH_NAMES, buildProduct, byId } from "@/lib/products";
+import {
+  deactivateProduct,
+  newProductId,
+  provisionProduct,
+  slugify,
+  uniqueSlug,
+} from "@/lib/admin/provision";
 
+import { skuFor } from "@/lib/skus";
 import { guarded } from "@/lib/admin/guard";
+
+/** A product the console can act on: built-in, or one it created earlier. */
+function baseProduct(data, id) {
+  return byId(id) ?? (data.customProducts ?? []).find((c) => c.id === id) ?? null;
+}
 
 const FITS = [
   "Skinny",
@@ -29,7 +42,9 @@ const _patch = async (req) => {
 
   const body = await req.json().catch(() => ({}));
   const productId = body.productId;
-  const base = byId(productId);
+  // Looked up across both sources: a product created in the console must be
+  // as editable as a built-in one.
+  const base = baseProduct(await readAdminData(), productId);
   if (!base) return NextResponse.json({ error: "Unknown product." }, { status: 404 });
 
   const patch = {};
@@ -134,16 +149,147 @@ const _patch = async (req) => {
   return NextResponse.json({ ok: true, override: data.products[productId] });
 };
 
-/** Drop every override for a product and fall back to the built-in values. */
+/**
+ * For a built-in product this drops the console's edits and falls back to the
+ * shipped values. For a product the console created there is nothing to fall
+ * back to, so it is removed from the catalogue and deactivated in Postgres —
+ * deactivated rather than deleted, because orders reference it and their
+ * history must survive.
+ */
 const _delete = async (req) => {
   const denied = await requireAdmin();
   if (denied) return denied;
+
   const { productId } = await req.json().catch(() => ({}));
+  const custom = !byId(productId);
+
+  if (custom) {
+    const data = await readAdminData();
+    if (!(data.customProducts ?? []).some((c) => c.id === productId)) {
+      return NextResponse.json({ error: "Unknown product." }, { status: 404 });
+    }
+    const gone = await deactivateProduct(productId);
+    if (!gone.ok) return NextResponse.json({ error: gone.error }, { status: 502 });
+  }
+
   await updateAdminData((draft) => {
     delete draft.products[productId];
+    if (custom) {
+      draft.customProducts = (draft.customProducts ?? []).filter((c) => c.id !== productId);
+    }
   });
-  return NextResponse.json({ ok: true });
+
+  return NextResponse.json({ ok: true, removed: custom });
 };
 
+/* ------------------------------------------------------------------
+   Create a product.
+
+   The Postgres side goes first. A product that exists in the catalogue but
+   has no variants looks fine on the shelf and then refuses every size at
+   checkout, so if provisioning fails nothing is added at all.
+   ------------------------------------------------------------------ */
+const _post = async (req) => {
+  const denied = await requireAdmin();
+  if (denied) return denied;
+
+  const body = await req.json().catch(() => ({}));
+  const bad = (error, status = 400) => NextResponse.json({ error }, { status });
+
+  const name = String(body.name ?? "").trim().slice(0, 80);
+  if (name.length < 2) return bad("Give the product a name.");
+
+  const pricePaise = Math.round(Number(body.pricePaise));
+  if (!Number.isFinite(pricePaise) || pricePaise < 100 || pricePaise > 100_000_00) {
+    return bad("Price must be between ₹1 and ₹1,00,000.");
+  }
+
+  let comparePaise = null;
+  if (body.comparePaise !== undefined && body.comparePaise !== null && body.comparePaise !== "") {
+    comparePaise = Math.round(Number(body.comparePaise));
+    if (!Number.isFinite(comparePaise)) return bad("Compare-at price is not a number.");
+    if (comparePaise <= pricePaise) {
+      return bad("Compare-at price should be higher than the price, or left empty.");
+    }
+  }
+
+  if (!FITS.includes(body.fit)) return bad(`Unknown fit: ${body.fit}`);
+  if (!RISES.includes(body.rise)) return bad(`Unknown rise: ${body.rise}`);
+
+  // Washes drive the colour ramps, so only ones the design system knows.
+  const washes = [...new Set((Array.isArray(body.washes) ? body.washes : []).filter((w) => WASH_NAMES.includes(w)))];
+  if (washes.length === 0) return bad("Choose at least one colourway.");
+
+  const sizes = [
+    ...new Set(
+      (Array.isArray(body.sizes) ? body.sizes : [])
+        .map((n) => Math.round(Number(n)))
+        .filter((n) => Number.isFinite(n) && n >= 24 && n <= 48),
+    ),
+  ].sort((a, b) => a - b);
+  if (sizes.length === 0) return bad("Choose at least one size.");
+
+  const openingStock = Math.max(0, Math.min(Math.round(Number(body.openingStock ?? 12)) || 0, 9999));
+
+  const data = await readAdminData();
+  const custom = data.customProducts ?? [];
+  const id = newProductId(new Set([...PRODUCTS.map((p) => p.id), ...custom.map((c) => c.id)]));
+  const slug = uniqueSlug(
+    slugify(name),
+    new Set([...PRODUCTS.map((p) => p.slug), ...custom.map((c) => c.slug)]),
+  );
+
+  const seed = {
+    id,
+    slug,
+    name,
+    pricePaise,
+    comparePaise: comparePaise ?? undefined,
+    fit: body.fit,
+    rise: body.rise,
+    washes,
+    sizes,
+    fabric: String(body.fabric ?? "").slice(0, 200) || undefined,
+    weightOz: Number.isFinite(Number(body.weightOz)) ? Number(body.weightOz) : 12,
+    stretchPct: Math.max(0, Math.min(Math.round(Number(body.stretchPct)) || 0, 40)),
+    collection: String(body.collection ?? "Core").slice(0, 40) || "Core",
+    story: String(body.story ?? "").slice(0, 1200) || undefined,
+    tags: (Array.isArray(body.tags) ? body.tags : [])
+      .map((t) => String(t).trim().toLowerCase())
+      .filter(Boolean)
+      .slice(0, 12),
+  };
+
+  const product = buildProduct(seed);
+
+  const provisioned = await provisionProduct(product, openingStock);
+  if (!provisioned.ok) return bad(provisioned.error, 502);
+
+  await updateAdminData((draft) => {
+    draft.customProducts = [...(draft.customProducts ?? []), seed];
+
+    // With Postgres connected the opening stock was already booked in as
+    // receipts. Without it, stock lives in this blob — and an unset sku
+    // silently reads as DEFAULT_DEPTH, so the figure the seller typed has
+    // to be written down or it is quietly ignored.
+    if (provisioned.backend === "file") {
+      for (const c of product.colours) {
+        for (const size of product.sizes) {
+          draft.stock[skuFor(product.id, c.code, size)] = openingStock;
+        }
+      }
+    }
+  });
+
+  return NextResponse.json({
+    ok: true,
+    product: { id, slug, name },
+    skus: provisioned.skus.length || sizes.length * washes.length,
+    warehouse: provisioned.warehouse,
+    backend: provisioned.backend,
+  });
+};
+
+export const POST = guarded(_post);
 export const PATCH = guarded(_patch);
 export const DELETE = guarded(_delete);
