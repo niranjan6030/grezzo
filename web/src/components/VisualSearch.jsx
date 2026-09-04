@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Camera, Image as ImageIcon, Loader2, X } from "lucide-react";
 import { inr } from "@/lib/products";
+import { describeImage, matchCatalogue } from "@/lib/lens";
 import { useCatalogue } from "./CatalogueProvider";
 import { isNative, nativePhoto } from "@/lib/native";
 import { useLens } from "@/store/useLens";
@@ -123,7 +124,10 @@ function LensPanel({ onClose }) {
           setMode("local");
           setMatches(matchCatalogue(desc, products, 6));
         }
-      } catch {
+      } catch (e) {
+        // Logged rather than swallowed: a silent catch here is why a broken
+        // matcher looked like an unreadable photo.
+        console.error("[lens] on-device match failed", e);
         setMode(null);
         setMatches([]);
         setErr("Could not read that image.");
