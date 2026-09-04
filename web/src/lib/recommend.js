@@ -47,10 +47,19 @@ export function localRecommend(events, favourites = [], cartIds = [], limit = 8)
   for (const e of events) {
     const p = byId(e.productId);
     if (!p) continue;
+
+    // These events are replayed from localStorage and posted by the client,
+    // so the timestamp cannot be trusted to exist. It used not to be
+    // guarded, and a single event without one turned every weight into NaN
+    // — which then sorted as equal, so the row silently degraded from
+    // recommendations into plain catalogue order with no error anywhere.
+    const at = Number(e.at);
+    const ageHours = Number.isFinite(at) ? Math.max(0, (now - at) / 3_600_000) : 0;
+
     // Half-life of one hour: what you looked at just now matters most.
-    const ageHours = (now - e.at) / 3_600_000;
-    const recency = Math.pow(0.5, ageHours / 1);
-    engaged.set(e.productId, (engaged.get(e.productId) ?? 0) + WEIGHT[e.kind] * recency);
+    const recency = Math.pow(0.5, ageHours);
+    const weight = WEIGHT[e.kind] ?? WEIGHT.view;
+    engaged.set(e.productId, (engaged.get(e.productId) ?? 0) + weight * recency);
   }
   favourites.forEach((id) => engaged.set(id, (engaged.get(id) ?? 0) + 3));
   cartIds.forEach((id) => engaged.set(id, (engaged.get(id) ?? 0) + 4));
@@ -64,7 +73,9 @@ export function localRecommend(events, favourites = [], cartIds = [], limit = 8)
   }
 
   const seen = new Set(engaged.keys());
-  const totalWeight = [...engaged.values()].reduce((a, b) => a + b, 0);
+  const summed = [...engaged.values()].reduce((a, b) => a + b, 0);
+  // Everything ancient enough to round to zero would otherwise divide by it.
+  const totalWeight = summed > 1e-9 ? summed : 1;
 
   const scored = PRODUCTS.filter((c) => !seen.has(c.id)).map((candidate) => {
     let score = 0;
@@ -108,8 +119,11 @@ export function localRecommend(events, favourites = [], cartIds = [], limit = 8)
 
     picked.push({
       productId: s.candidate.id,
-      score: Math.min(adjusted * 4, 1),
-      reason: s.bestSource ? reasonFor(s.bestSource, s.candidate) : "Similar cut",
+      score: Number.isFinite(adjusted) ? Math.min(Math.max(adjusted * 4, 0), 1) : 0,
+      // Only claim a reason when one product actually drove the pick.
+      // Saying "Similar cut" of a jean nothing was compared against is worse
+      // than saying nothing specific.
+      reason: s.bestSource ? reasonFor(s.bestSource, s.candidate) : "From the archive",
     });
     chosen.push(s.candidate);
   }

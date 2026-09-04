@@ -110,9 +110,24 @@ function LensPanel({ onClose }) {
         throw new Error("no matches");
       }
     } catch {
-      // Service down or not deployed yet — fall back to on-device colour matching.
-      setMode("local");
-      setMatches(await localMatch(dataUrl, products));
+      // No embedding service, or it could not answer. Read the photograph
+      // here instead — tone, wash and leg shape are enough to rank a range
+      // this size, and it costs nothing and works offline.
+      try {
+        const desc = await describeImage(dataUrl);
+        if (!desc) {
+          setMode(null);
+          setMatches([]);
+          setErr("Could not pick the garment out of that photo. Try a plainer background.");
+        } else {
+          setMode("local");
+          setMatches(matchCatalogue(desc, products, 6));
+        }
+      } catch {
+        setMode(null);
+        setMatches([]);
+        setErr("Could not read that image.");
+      }
     } finally {
       setBusy(false);
     }
@@ -201,7 +216,7 @@ function LensPanel({ onClose }) {
               <p className="mt-4 text-xs text-ink-soft">
                 {mode === "clip"
                   ? "Matched with CLIP image embeddings."
-                  : "Matched on-device by colour and tone — the embedding service is not connected."}
+                  : "Matched on this device — wash, tone and the shape of the leg. Nothing left your phone."}
               </p>
             )}
           </div>
@@ -251,64 +266,3 @@ function LensPanel({ onClose }) {
    Crude next to CLIP, but it runs with zero infrastructure and it is
    right about wash and darkness surprisingly often.
    ------------------------------------------------------------------ */
-async function localMatch(dataUrl, products) {
-  const img = await loadImage(dataUrl);
-  const N = 48;
-  const c = document.createElement("canvas");
-  c.width = N;
-  c.height = N;
-  const ctx = c.getContext("2d", { willReadFrequently: true });
-  ctx.drawImage(img, 0, 0, N, N);
-  const { data } = ctx.getImageData(0, 0, N, N);
-
-  let r = 0,
-    g = 0,
-    b = 0,
-    n = 0;
-  const lums = [];
-  for (let i = 0; i < data.length; i += 4) {
-    // Ignore near-white studio background so the garment dominates.
-    const lum = (0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2]) / 255;
-    if (lum > 0.94) continue;
-    r += data[i];
-    g += data[i + 1];
-    b += data[i + 2];
-    n++;
-    lums.push(lum);
-  }
-  if (!n) return products.slice(0, 6).map((p) => ({ product: p, score: 0.4, why: "no signal" }));
-  const avg = [r / n, g / n, b / n];
-  lums.sort((x, y) => x - y);
-  const median = lums[Math.floor(lums.length / 2)];
-  const contrast = lums.at(-1) - lums[0];
-
-  return products
-    .map((p) => {
-      const target = hexToRgb(p.ramp[1]);
-      const dist =
-        Math.sqrt(
-          (avg[0] - target[0]) ** 2 + (avg[1] - target[1]) ** 2 + (avg[2] - target[2]) ** 2,
-        ) / 441.67;
-      const targetLum = (0.2126 * target[0] + 0.7152 * target[1] + 0.0722 * target[2]) / 255;
-      const lumGap = Math.abs(median - targetLum);
-      const wearGap = Math.abs(contrast - 0.55) * 0.3;
-      const score = Math.max(0, 1 - (dist * 0.55 + lumGap * 0.4 + wearGap));
-      const why = lumGap < 0.09 ? "wash match" : dist < 0.22 ? "tone match" : "closest indigo";
-      return { product: p, score, why };
-    })
-    .sort((a, b2) => b2.score - a.score)
-    .slice(0, 6);
-}
-
-const loadImage = (src) =>
-  new Promise((res, rej) => {
-    const i = new Image();
-    i.onload = () => res(i);
-    i.onerror = rej;
-    i.src = src;
-  });
-
-const hexToRgb = (hex) => {
-  const v = parseInt(hex.slice(1), 16);
-  return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
-};
